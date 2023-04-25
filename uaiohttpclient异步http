@@ -1,0 +1,214 @@
+import uasyncio as asyncio
+import uaiohttpclient as aiohttp
+
+
+async def send_post_request(url, headers, body):
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, headers=headers, data=body) as resp:
+            print(resp.status)
+            response_text = await resp.text()
+            print(response_text)
+
+
+async def main():
+    url = "http://example.com/api/endpoint"
+    headers = {"Content-Type": "application/json"}
+    body = '{"username": "john", "password": "doe123"}'
+    await send_post_request(url, headers, body)
+
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(main())
+
+
+
+
+import uasyncio as asyncio
+import uaiohttpclient as aiohttp
+
+
+async def send_post_request(url, headers, body):
+    resp = await aiohttp.request(
+        "POST",
+        url,
+        headers=headers,
+        data=body
+    )
+    print(resp.status_code)
+    response_text = await resp.text()
+    print(response_text)
+    resp.close()
+
+
+async def main():
+    url = "http://example.com/api/endpoint"
+    headers = {"Content-Type": "application/json"}
+    body = '{"username": "john", "password": "doe123"}'
+    await send_post_request(url, headers, body)
+
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(main())
+
+
+
+同步也许可行
+import aiohttp
+import asyncio
+
+async def main():
+    async with aiohttp.ClientSession() as session:
+        response = await session.request('GET', 'http://python.org')
+        print("Status:", response.status)
+        print("Content-type:", response.headers['content-type'])
+        html = await response.text()
+        print("Body:", html[:15], "...")
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(main())
+
+
+
+http get 
+import uaiohttpclient as aiohttp
+import uasyncio as asyncio
+
+async def main():
+    # 创建 uaiohttpclient 客户端会话
+    session = aiohttp.ClientSession()
+
+    try:
+        # 发送 GET 请求
+        response = await session.get('http://example.com')
+        print("Status:", response.status)
+        print("Content-type:", response.headers['content-type'])
+        html = await response.text()
+        print("Body:", html[:15], "...")
+    finally:
+        # 关闭 uaiohttpclient 客户端会话
+        await session.close()
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(main())
+
+
+不用ClientSession对象也许可行
+import uaiohttpclient as aiohttp
+import uasyncio as asyncio
+
+async def main():
+    # 发送 GET 请求
+    response = await aiohttp.get('http://example.com')
+    print("Status:", response.status)
+    print("Content-type:", response.headers['content-type'])
+    html = await response.text()
+    print("Body:", html[:15], "...")
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(main())
+
+
+
+post的代码
+import uaiohttpclient as aiohttp
+import uasyncio as asyncio
+
+async def main():
+    # 构造 POST 请求的数据
+    data = {"key1": "value1", "key2": "value2"}
+
+    # 发送 POST 请求
+    response = await aiohttp.post('http://example.com', json=data)
+    print("Status:", response.status)
+    print("Content-type:", response.headers['content-type'])
+    html = await response.text()
+    print("Body:", html[:15], "...")
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(main())
+
+空中固件更新
+import uaiohttpclient as aiohttp
+import uasyncio as asyncio
+
+async def download_firmware(url):
+    print("设备开始下载固件文件...")
+    response = await aiohttp.get(url)
+    firmware_data = bytearray()
+    firmware_size = int(response.headers.get('Content-Length', 0))
+    downloaded_size = 0
+    chunk_size = 1024
+
+    with open('firmware.bin', 'wb') as f:
+        while True:
+            chunk = await response.read(chunk_size)
+            if not chunk:
+                break
+            downloaded_size += len(chunk)
+            f.write(chunk)
+            progress = int(downloaded_size / firmware_size * 100)
+            print(f"下载进度: {progress}% ({downloaded_size}/{firmware_size} bytes)", end='\r')
+
+    print("\n固件文件下载完成.")
+    return 'firmware.bin'
+
+async def install_firmware(file_path):
+    print("设备开始安装固件...")
+    # 这里可以根据固件文件的格式和设备的固件更新逻辑进行具体的固件安装操作
+    # 例如，可以将固件文件保存到设备的存储器中，并在设备重启后加载新的固件
+    # 注意：在实际的设备固件更新中，需要考虑到安全性、完整性和容错性等因素，例如使用数字签名验证固件文件的合法性，处理网络不稳定或中断等情况。
+    await asyncio.sleep(2)
+    print("固件安装完成.")
+
+async def main():
+    firmware_url = 'http://example.com/firmware.bin'
+    firmware_file = await download_firmware(firmware_url)
+    await install_firmware(firmware_file)
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(main())
+
+
+
+完整版
+import uaiohttpclient as aiohttp
+import uasyncio as asyncio
+import os
+
+async def download_firmware(url):
+    print("设备开始下载固件文件...")
+    response = await aiohttp.get(url)
+    firmware_data = bytearray()
+    firmware_size = int(response.headers.get('Content-Length', 0))
+    downloaded_size = 0
+    chunk_size = 1024
+
+    with open('firmware.bin', 'wb') as f:
+        while True:
+            chunk = await response.read(chunk_size)
+            if not chunk:
+                break
+            downloaded_size += len(chunk)
+            f.write(chunk)
+            progress = int(downloaded_size / firmware_size * 100)
+            print(f"下载进度: {progress}% ({downloaded_size}/{firmware_size} bytes)", end='\r')
+
+    print("\n固件文件下载完成.")
+    return 'firmware.bin'
+
+async def install_firmware(file_path):
+    print("设备开始安装固件...")
+    # 将固件文件保存到设备的存储器中
+    with open(file_path, 'rb') as f:
+        firmware_data = f.read()
+        with open('/flash/firmware.bin', 'wb') as firmware_file:
+            firmware_file.write(firmware_data)
+    print("固件安装完成.")
+
+async def main():
+    firmware_url = 'http://example.com/firmware.bin'
+    firmware_file = await download_firmware(firmware_url)
+    await install_firmware(firmware_file)
+
+loop = asyncio.get_event_loop()
+loop.run_until_complete(main())
