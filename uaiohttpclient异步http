@@ -179,10 +179,12 @@ async def download_firmware(url):
     print("设备开始下载固件文件...")
     response = await aiohttp.get(url)
     firmware_data = bytearray()
+    #从响应头中获取固件文件的大小
     firmware_size = int(response.headers.get('Content-Length', 0))
     downloaded_size = 0
+    #定义每次从网络中读取的数据块大小
     chunk_size = 1024
-
+    #打开一个二进制文件，以写入模式打开，文件名为'firmware.bin'。
     with open('firmware.bin', 'wb') as f:
         while True:
             chunk = await response.read(chunk_size)
@@ -192,7 +194,8 @@ async def download_firmware(url):
             f.write(chunk)
             progress = int(downloaded_size / firmware_size * 100)
             print(f"下载进度: {progress}% ({downloaded_size}/{firmware_size} bytes)", end='\r')
-
+#循环读取响应内容，每次读取chunk_size大小的数据块，直到读取完毕。每读取一个数据块，就将该块数据写入文件，
+#并更新已下载的数据大小。根据已下载的数据大小和固件文件大小，计算下载进度（百分比）
     print("\n固件文件下载完成.")
     return 'firmware.bin'
 
@@ -203,6 +206,7 @@ async def install_firmware(file_path):
         firmware_data = f.read()
         with open('/flash/firmware.bin', 'wb') as firmware_file:
             firmware_file.write(firmware_data)
+    #将指定文件（file_path）的内容写入到 /flash/firmware.bin 文件中，即将固件升级文件写入到设备的闪存中，以便进行固件升级。
     print("固件安装完成.")
 
 async def main():
