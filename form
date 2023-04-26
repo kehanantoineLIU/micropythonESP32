@@ -1,0 +1,10 @@
+data = {
+    "name": "John Doe",
+    "email": "john@example.com",
+    "phone": "123-456-7890"
+}
+
+url = "http://example.com/form"
+
+# 编码表格数据为URL编码表单
+form_data = "&".join(["{}={}".format(k, v) for k, v in data.items()])
