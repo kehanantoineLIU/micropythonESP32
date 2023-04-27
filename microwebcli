@@ -1,0 +1,209 @@
+def OpenRequest( self,
+                 data           = None,
+                 contentType    = None,
+                 contentLength  = None ) :
+    # 检查是否已经有打开的请求
+    if self._socket :
+        raise Exception('Request is already opened')
+    # 检查 URL 是否已经定义
+    if not self.URL :
+        raise Exception('No URL defined')
+    # 如果使用 SOCKS5 代理，则检查代理地址是否正确
+    if self.Socks5Addr :
+        if not isinstance(self.Socks5Addr, tuple) or len(self.Socks5Addr) != 2 :
+            raise Exception('"Socks5Addr" must be a tuple of (host, port)')
+        host, port = self.Socks5Addr
+        if not isinstance(host, str) or not isinstance(port, int) :
+            raise Exception('"Socks5Addr" is incorrect ("%s", %s)' % self.Socks5Addr)
+    # 如果不使用代理，则将目标地址设置为 URL 中的地址
+    else :
+        host = self.Host
+        port = self.Port
+    # 初始化响应为 None
+    self._response = None
+    # 获取目标主机的 IP 地址，并创建一个 TCP 客户端
+    try :
+        self._socketAddr = socket.getaddrinfo(host, port)[0][-1]
+        cli              = socket.socket( socket.AF_INET,
+                                          socket.SOCK_STREAM,
+                                          socket.IPPROTO_TCP )
+        # 设置连接超时时间
+        cli.settimeout(self.ConnTimeoutSec)
+        # 连接目标主机
+        cli.connect(self._socketAddr)
+    except :
+        raise Exception('Error to connect to %s:%s' % (host, port))
+    # 如果使用 SOCKS5 代理，则进行代理协商过程
+    if self.Socks5Addr :
+        err = None
+        try :
+            # 发送协商请求
+            cli.send(b'\x05\x01\x00')
+            b = cli.read(2)
+            # 检查代理服务器是否支持 SOCKS5 协议
+            if b is None or len(b) < 2 or b[0] != 0x05 or b[1] != 0x00 :
+                err = "%s:%s doesn't supports MicroWebCli SOCKS5 client protocol" % self.Socks5Addr
+            else :
+                # 向代理服务器发送连接请求
+                h = self.Host.encode()
+                p = pack('>H', self.Port)
+                cli.send(b'\x05\x01\x00\x03' + bytes([len(h)]) + h + p)
+                b = cli.read(4)
+                # 检查连接是否成功
+                if b is None or len(b) < 4 or b[1] != 0x00 :
+                    err = "Error to connect to %s:%s through SOCKS5 server" % (self.Host, self.Port)
+                else :
+                    # 处理返回数据，用于确认连接信息
+                    if b[3] == 0x01 :
+                        l = 4
+                    elif b[3] == 0x03 :
+                        l = cli.read(1)[0]
+                    elif b[3] == 0x04 :
+                        l = 16
+                    cli.read(l + 2)
+        except Exception as ex :
+            err = 'Error during negotiation with SOCKS5 server (%s)' % ex
+        if err :
+            cli.close()
+            raise Exception(err)
+            如果有错误发生，关闭连接并抛出异常。
+      if self.Proto == 'https' :
+    if not 'ssl' in globals() :
+        import ssl
+    try :
+        try :
+            cli = ssl.wrap_socket(cli, timeout=self.ConnTimeoutSec)
+        except TypeError :
+            cli = ssl.wrap_socket(cli)
+    except Exception as ex :
+        cli.close()
+        raise Exception('Error to open a secure SSL/TLS connection (%s)' % ex)
+    如果使用 HTTPS 协议，需要进行 SSL/TLS 安全连接。如果还没有导入 ssl 模块，则导入它。使用 ssl.wrap_socket 函数进行 SSL/TLS 安全连接，
+    如果连接超时设置，则设置连接超时时间，否则使用默认设置。如果发生异常，关闭连接并抛出异常。
+    self._socket = cli
+    self._writeFirstLine()
+    将客户端的套接字对象存储到 _socket 属性中，并写入 HTTP 请求行（即 GET / HTTP/1.1 或 POST /somepath HTTP/1.1）。
+    if data :
+        contentLength = len(data)
+    如果有请求数据，则计算请求数据的长度。
+    self._headers['Host'] = self.Host
+    设置 HTTP 请求头中的 Host 字段。
+    if self._auth :
+      try :
+          self._auth.Apply(self)
+      except :
+          raise Exception('Error to apply authentication using %s' % type(self._auth))
+    else :
+      self._headers.pop('Authorization', None)
+      如果需要进行认证，则应用认证信息。否则，从请求头中移除 Authorization 字段
+    if contentType :
+        self._headers['Content-Type'] = contentType
+    else :
+        self._headers.pop('Content-Type', None)
+    如果有 Content-Type 字段，则设置 HTTP 请求头中的 Content-Type 字段。
+    否则，从请求头中移除 Content-Type 字段。
+    if contentLength :
+        self._headers['Content-Length'] = contentLength
+    else :
+        self._headers.pop('Content-Length', None)
+    self._headers['User-Agent'] = 'MicroWebCli by JC`zic'
+    for h in self._headers :
+        self._writeHeader(h, self._headers[h])
+    self._writeEndHeader()
+    以下是逐行的代码解释：
+
+css
+Copy code
+if err :
+    cli.close()
+    raise Exception(err)
+如果有错误发生，关闭连接并抛出异常。
+
+python
+Copy code
+if self.Proto == 'https' :
+    if not 'ssl' in globals() :
+        import ssl
+    try :
+        try :
+            cli = ssl.wrap_socket(cli, timeout=self.ConnTimeoutSec)
+        except TypeError :
+            cli = ssl.wrap_socket(cli)
+    except Exception as ex :
+        cli.close()
+        raise Exception('Error to open a secure SSL/TLS connection (%s)' % ex)
+如果使用 HTTPS 协议，需要进行 SSL/TLS 安全连接。如果还没有导入 ssl 模块，则导入它。使用 ssl.wrap_socket 函数进行 SSL/TLS 安全连接，如果连接超时设置，则设置连接超时时间，否则使用默认设置。如果发生异常，关闭连接并抛出异常。
+
+lua
+Copy code
+self._socket = cli
+self._writeFirstLine()
+将客户端的套接字对象存储到 _socket 属性中，并写入 HTTP 请求行（即 GET / HTTP/1.1 或 POST /somepath HTTP/1.1）。
+
+kotlin
+Copy code
+if data :
+    contentLength = len(data)
+如果有请求数据，则计算请求数据的长度。
+
+lua
+Copy code
+self._headers['Host'] = self.Host
+设置 HTTP 请求头中的 Host 字段。
+
+python
+Copy code
+if self._auth :
+    try :
+        self._auth.Apply(self)
+    except :
+        raise Exception('Error to apply authentication using %s' % type(self._auth))
+else :
+    self._headers.pop('Authorization', None)
+如果需要进行认证，则应用认证信息。否则，从请求头中移除 Authorization 字段。
+
+python
+Copy code
+if contentType :
+    self._headers['Content-Type'] = contentType
+else :
+    self._headers.pop('Content-Type', None)
+如果有 Content-Type 字段，则设置 HTTP 请求头中的 Content-Type 字段。否则，从请求头中移除 Content-Type 字段。
+
+python
+Copy code
+if contentLength :
+    self._headers['Content-Length'] = contentLength
+else :
+    self._headers.pop('Content-Length', None)
+如果有 Content-Length 字段，则设置 HTTP 请求头中的 Content-Length 字段。否则，从请求头中移除 Content-Length 字段。
+
+rust
+Copy code
+self._headers['User-Agent'] = 'MicroWebCli by JC`zic'
+for h in self._headers :
+    self._writeHeader(h, self._headers[h])
+self._writeEndHeader()
+设置 HTTP 请求头中的 User-Agent 字段，并将请求头写入客户端套接字。最后，写入 HTTP 请求头的结束标记。
+if data :
+    self._write(data)
+如果有请求数据，则将请求数据写入客户端套接字。
+
+
+
+
+
+
+
+ @property
+    def Auth(self) :
+        return self._auth
+
+    @Auth.setter
+    def Auth(self, value) :
+        self._auth = value
+定义了一个名为Auth的属性，使用@property装饰器将其定义为只读属性，可以使用点运算符访问它。
+然后，使用@Auth.setter装饰器定义了一个setter方法，使其成为可写属性。当设置新的值时，
+该方法将更新_auth属性的值。这种方式提供了一种方便的方法来访问和设置_auth属性，同时保护了它的值免受意外修改。
+
+
