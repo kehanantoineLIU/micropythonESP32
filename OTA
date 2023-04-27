@@ -1,0 +1,247 @@
+#essayer
+
+import machine
+import time
+from microWebCli import MicroWebCli
+
+# 定义固件下载地址和固件文件名
+FIRMWARE_URL = "http://example.com/firmware.bin"
+FIRMWARE_FILENAME = "firmware.bin"
+
+# 定义串口相关配置
+SERIAL_PORT = "/dev/ttyUSB0"
+BAUD_RATE = 115200
+
+# 初始化 MicroWebCli 对象
+cli = MicroWebCli(SERIAL_PORT, BAUD_RATE)
+
+# 下载固件文件
+cli.sendCmd("download {} {}".format(FIRMWARE_URL, FIRMWARE_FILENAME))
+
+# 等待下载完成
+while not cli.serial.inWaiting():
+    time.sleep(0.1)
+
+# 打开固件文件并读取其内容
+with open(FIRMWARE_FILENAME, "rb") as f:
+    firmware = f.read()
+
+# 关闭固件文件
+f.close()
+
+# 将固件文件发送给 microcontroller 进行升级
+cli.sendFirmware(firmware)
+
+# 关闭串口连接
+cli.close()
+
+
+
+
+import os
+import time
+from microWebCli import MicroWebCli
+
+# Define the URL of the upgrade file
+upgrade_url = "http://example.com/firmware.bin"
+
+# Create a new MicroWebCli instance
+cli = MicroWebCli("example.com", 80)
+
+# Send a GET request to the upgrade file URL
+response = cli.Get(upgrade_url)
+
+# Determine the size of the upgrade file
+file_size = int(response.GetHeader("Content-Length"))
+
+# Create a new file to save the upgrade file
+upgrade_file = open("firmware.bin", "wb")
+
+# Loop through the response data and write it to the file
+progress = 0
+while True:
+    data = response.Read(1024)
+    if not data:
+        break
+    upgrade_file.write(data)
+    progress += len(data)
+    print("Downloading upgrade: {}%".format(int(progress / file_size * 100)))
+    time.sleep(0.1)
+
+# Close the file and response
+upgrade_file.close()
+response.Close()
+
+# Confirm the upgrade file was downloaded
+if os.path.getsize("firmware.bin") == file_size:
+    print("Upgrade file downloaded successfully.")
+    # TODO: Execute upgrade program
+else:
+    print("Error: Upgrade file download failed.")
+
+
+
+
+
+
+第三个版本
+import os
+import time
+from machine import Pin
+from microWebCli import MicroWebCli
+import ujson
+
+# Define the URL of the upgrade file
+upgrade_url = "http://example.com/firmware.bin"
+
+# Define the pins for the LED indicator
+led = Pin(2, Pin.OUT)
+
+# Create a new MicroWebCli instance
+cli = MicroWebCli("example.com", 80)
+
+# Send a GET request to the upgrade file URL
+response = cli.Get(upgrade_url)
+
+# Determine the size of the upgrade file
+file_size = int(response.GetHeader("Content-Length"))
+
+# Create a new file to save the upgrade file
+upgrade_file = open("firmware.bin", "wb")
+
+# Loop through the response data and write it to the file
+progress = 0
+while True:
+    data = response.Read(1024)
+    if not data:
+        break
+    upgrade_file.write(data)
+    progress += len(data)
+    print("Downloading upgrade: {}%".format(int(progress / file_size * 100)))
+    led.value(1)
+    time.sleep(0.1)
+    led.value(0)
+
+# Close the file and response
+upgrade_file.close()
+response.Close()
+
+# Confirm the upgrade file was downloaded
+if os.path.getsize("firmware.bin") == file_size:
+    print("Upgrade file downloaded successfully.")
+    # TODO: Execute upgrade program
+else:
+    print("Error: Upgrade file download failed.")
+定义了升级文件的URL和LED指示灯的GPIO引脚。接下来，我们创建了一个新的MicroWebCli实例，并向服务器发送了一个GET请求，
+以获取升级文件。我们使用GetHeader方法来获取响应头中的Content-Length字段，以确定升级文件的大小。然后，我们创建了一个新的文件来保存升级文件，
+并循环读取响应数据并写入文件。在循环中，我们使用LED指示灯来显示进度，每下载1KB的数据就会闪烁一次。
+最后，我们关闭了文件和响应，并检查升级文件是否下载成功。如果升级文件下载成功，我们可以执行升级程序，否则我们将显示一个错误消息。
+
+
+ESP32升级程序
+# Confirm the upgrade file was downloaded
+if os.path.getsize("firmware.bin") == file_size:
+    print("Upgrade file downloaded successfully.")
+    
+    # Erase the flash memory
+    machine.erase_flash()
+
+    # Open the upgrade file and write it to flash memory
+    upgrade_file = open("firmware.bin", "rb")
+    buffer = bytearray(1024)
+    addr = 0x1000
+    while True:
+        size = upgrade_file.readinto(buffer)
+        if not size:
+            break
+        machine.flash_write(addr, buffer, size)
+        addr += size
+        print("Writing to flash: {}%".format(int(addr / file_size * 100)))
+        led.value(1)
+        time.sleep(0.1)
+        led.value(0)
+
+    # Close the upgrade file
+    upgrade_file.close()
+    
+    # Reset the device
+    machine.reset()
+else:
+    print("Error: Upgrade file download failed.")
+    
+    
+    
+    
+    
+    
+下载好的文件进行升级
+import os
+import machine
+import time
+
+# Define the pins for the LED indicator
+led = machine.Pin(2, machine.Pin.OUT)
+
+# Define the path to the upgrade file
+upgrade_file = "firmware.bin"
+
+# Check if the upgrade file exists
+if os.path.exists(upgrade_file):
+    print("Found upgrade file: {}".format(upgrade_file))
+    # Open the upgrade file
+    with open(upgrade_file, "rb") as f:
+        # Erase the flash memory
+        machine.erase_flash()
+        # Loop through the file and write it to flash
+        while True:
+            data = f.read(1024)
+            if not data:
+                break
+            machine.flash_write(data)
+            # Blink the LED to show progress
+            led.value(1)
+            time.sleep(0.1)
+            led.value(0)
+        # Reset the ESP32
+        machine.reset()
+else:
+    print("Error: Upgrade file not found.")
+    
+    
+    
+    
+    
+    
+    
+import os
+import machine
+import time
+
+# Define the pins for the LED indicator
+led = machine.Pin(2, machine.Pin.OUT)
+
+# Define the path to the upgrade file
+upgrade_file = "firmware.bin"
+
+# Check if the upgrade file exists
+if os.path.exists(upgrade_file):
+    print("Found upgrade file: {}".format(upgrade_file))
+    # Open the upgrade file
+    with open(upgrade_file, "rb") as f:
+        # Erase the flash memory
+        machine.erase_flash()
+        # Loop through the file and write it to flash
+        while True:
+            data = f.read(1024)
+            if not data:
+                break
+            machine.flash_write(data)
+            # Blink the LED to show progress
+            led.value(1)
+            time.sleep(0.1)
+            led.value(0)
+        # Reset the ESP32
+        machine.reset()
+else:
+    print("Error: Upgrade file not found.")
+
