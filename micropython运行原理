@@ -1,0 +1,4 @@
+MicroPython 的档案结构，MicroPython 在开机时预设会读取两个档案boot.py 与main.py，我们使用者可以自己创建并存入。
+
+boot.py：存放为开机时预设读取的参数设定，如wifi或网路参数，如无特殊需求，可以不用动它。
+main.py：开机后会自动执行的档案，换句话说，当我们写好python 程式后，想要目标板开启电源后就自动执行的话，就把程式档取为main.py 并存入Micropython 设备即可。
