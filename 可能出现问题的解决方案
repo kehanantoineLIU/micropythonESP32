@@ -1,2 +1,61 @@
 解决MicroPython执行SD卡中的main.py文件中的死循环出不来的问题
 https://blog.csdn.net/suyong_yq/article/details/123676007
+
+
+
+
+https://github.com/anuradhawick/ssdp_upnp/blob/master/ssdp_upnp/ssdp.py
+https://www.reddit.com/r/tasker/comments/ccrx5e/weekly_challenge_perform_an_ssdpservice_discovery/
+
+
+
+
+
+这段代码是用来搜索网络中的 UPnP 设备，并将结果存储在 /sdcard/ssdp.txt 文件中的 Python 代码。下面是对每行代码的逐行解释：
+
+python
+Copy code
+import socket
+导入 Python 中的 socket 模块，用于创建套接字并与其他设备进行通信。
+
+python
+Copy code
+f1 = open('/sdcard/ssdp.txt', 'w')
+打开一个名为 /sdcard/ssdp.txt 的文件，并将其赋值给变量 f1。'w' 表示我们将以写入模式打开文件。
+
+python
+Copy code
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+创建一个新的套接字并将其赋值给变量 s。socket.AF_INET 表示我们将使用 IPv4 进行通信，socket.SOCK_DGRAM 表示我们将使用 UDP 协议进行通信。
+
+python
+Copy code
+s.settimeout(10.0)
+设置套接字 s 的超时时间为 10 秒。如果在 10 秒内没有收到任何数据，套接字将引发超时异常。
+
+python
+Copy code
+message = \
+    'M-SEARCH * HTTP/1.1\r\n' \
+    'HOST:239.255.255.250:1900\r\n' \
+    'ST:upnp:rootdevice\r\n' \
+    'MX:10\r\n' \
+    'MAN:"ssdp:discover"\r\n' \
+    '\r\n'
+定义一个包含搜索 UPnP 设备所需的信息的字符串，并将其赋值给变量 message。这个字符串使用的是 SSDP（Simple Service Discovery Protocol）协议。
+
+python
+Copy code
+s.sendto(message.encode(), ("239.255.255.250", 1900))
+将搜索请求通过套接字 s 发送到 IP 地址为 239.255.255.250，端口号为 1900 的目标地址。
+
+python
+Copy code
+while 1:
+    try:
+        data, addr = s.recvfrom(1024)
+        print(data.decode())
+        print(data.decode(), file=f1)
+    except socket.timeout:
+        break
+循环等待搜索响应，并将响应数据打印到控制台和写入到 f1 文件中。当超时异常被引发时，退出循环并结束程序。
