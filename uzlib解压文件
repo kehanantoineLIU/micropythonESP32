@@ -1,0 +1,41 @@
+import uzlib
+
+def extract_zip(zip_filename):
+    with open(zip_filename, 'rb') as zip_file:
+        # 使用`uzlib.DecompIO`将zip文件对象包装成解压缩流对象
+        decomp_stream = uzlib.DecompIO(zip_file)
+
+        # 读取zip文件的前4个字节，应该是固定的签名"PK\x03\x04"
+        signature = decomp_stream.read(4)
+        if signature != b'PK\x03\x04':
+            raise ValueError("Invalid zip file")
+
+        # 循环读取zip文件中的各个文件
+        while True:
+            # 读取文件头部，固定大小为30个字节
+            header = decomp_stream.read(30)
+            if len(header) < 30:
+                break
+
+            # 解析文件头部中的相关信息
+            file_size = int.from_bytes(header[22:26], 'little')  # 文件大小
+            extra_size = int.from_bytes(header[28:30], 'little')  # 额外字段大小
+
+            # 读取文件名，固定大小为26个字节，使用utf-8解码并去除末尾的空字符
+            file_name = decomp_stream.read(26).decode('utf-8').rstrip('\x00')
+
+            # 读取并丢弃额外字段
+            decomp_stream.read(extra_size)
+
+            # 判断是否为文件夹（以斜杠结尾的文件名视为文件夹）
+            is_directory = file_name.endswith('/')
+
+            if not is_directory:
+                # 读取文件数据
+                file_data = decomp_stream.read(file_size)
+                # 处理文件数据，这里只是简单地打印文件名和数据内容
+                print(f"File: {file_name}")
+                print(f"Data: {file_data}")
+
+# 调用函数并传入zip文件名
+extract_zip("example.zip")
