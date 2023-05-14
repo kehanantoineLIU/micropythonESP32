@@ -1,0 +1,83 @@
+import socket
+
+def download_zip(url, filename):
+    # 解析URL获取主机名和路径
+    parts = url.split('/')
+    host = parts[2]
+    path = '/' + '/'.join(parts[3:])
+
+    # 创建Socket连接
+    addr = socket.getaddrinfo(host, 80)[0][-1]
+    s = socket.socket()
+    s.connect(addr)
+
+    # 发送HTTP请求
+    request = f"GET {path} HTTP/1.0\r\nHost: {host}\r\n\r\n"
+    s.send(request)
+
+    # 读取HTTP响应头
+    while True:
+        response = s.readline()
+        if response == b'\r\n':
+            break
+
+    # 保存ZIP文件
+    with open(filename, 'wb') as f:
+        while True:
+            data = s.read(1024)
+            if not data:
+                break
+            f.write(data)
+
+    # 关闭Socket连接
+    s.close()
+
+# 调用函数并传入URL和要保存的文件名
+download_zip("http://example.com/example.zip", "example.zip")
+
+
+
+
+
+
+
+
+
+
+
+import socket
+
+def download_zip(url, save_filename):
+    _, _, host, path = url.split('/', 3)
+    addr = socket.getaddrinfo(host, 80)[0][-1]
+    
+    # 建立与服务器的连接
+    s = socket.socket()
+    s.connect(addr)
+    
+    # 发送HTTP请求头部
+    s.send(bytes('GET /{} HTTP/1.0\r\nHost: {}\r\n\r\n'.format(path, host), 'utf8'))
+    
+    # 读取HTTP响应头部
+    while True:
+        data = s.recv(512)
+        if data == b'':
+            break
+        if b'\r\n\r\n' in data:
+            break
+    
+    # 创建保存ZIP文件的本地文件
+    with open(save_filename, 'wb') as f:
+        # 读取HTTP响应体并写入本地文件
+        while True:
+            data = s.recv(512)
+            if data == b'':
+                break
+            f.write(data)
+    
+    # 关闭连接
+    s.close()
+
+# 调用函数并传入URL和保存的文件名
+download_zip("http://example.com/example.zip", "example.zip")
+
