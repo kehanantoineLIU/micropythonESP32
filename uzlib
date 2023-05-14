@@ -1,0 +1,23 @@
+import micropython
+from zlib import *
+
+
+class DecompIO:
+
+    def __init__(self, stream, dict_bits, dictbuf=None):
+        self.stream = stream
+        self.decomp = decompressobj(dict_bits)
+        self.pending = b""
+
+    ##用于从输入流中读取指定大小的数据并返回。
+    def read(self, size):
+        while len(self.pending) < size:##直到self.pending中的数据大小达到指定的size
+            inp = self.stream.read(256)##从输入流self.stream中读取256字节的数据，并将其赋值给变量inp。
+            if not inp:##如果inp为空（即没有更多的输入数据可读取）
+                break
+            outp = self.decomp.decompress(inp)##使用self.decomp对象对输入数据inp进行解压缩操作，并将解压缩后的数据赋值给变量outp。
+            self.pending += outp##将self.pending中剩余的数据（即去掉前size个字节后的数据）重新赋值给self.pending。
+
+        outp = self.pending[:size]
+        self.pending = self.pending[size:]
+        return outp
