@@ -1,0 +1,330 @@
+#
+# upip - Package manager for MicroPython
+#
+# Copyright (c) 2015-2018 Paul Sokolovsky
+#
+# Licensed under the MIT license.
+#
+import sys
+import gc
+import uos as os
+import uerrno as errno
+import ujson as json
+import uzlib
+import upip_utarfile as tarfile
+gc.collect()
+
+
+debug = False
+install_path = None
+cleanup_files = []
+gzdict_sz = 16 + 15
+
+file_buf = bytearray(512)
+
+class NotFoundError(Exception):
+    pass
+
+def op_split(path):##将给定路径字符串拆分为目录部分和文件名部分，并以元组的形式返回拆分结果。
+    if path == "":
+        return ("", "")
+    r = path.rsplit("/", 1)
+    if len(r) == 1:
+        return ("", path)
+    head = r[0]
+    if not head:
+        head = "/"
+    return (head, r[1])
+
+def op_basename(path):
+    return op_split(path)[1]
+
+# Expects *file* name
+##根据给定的目录名递归创建目录，并返回创建结果。它会根据目录名中的斜杠进行分割，并逐级创建子目录。如果目录已经存在，或者创建过程中遇到其他错误，函数将返回失败的结果。
+def _makedirs(name, mode=0o777):
+    ret = False
+    s = ""
+    comps = name.rstrip("/").split("/")[:-1]
+    if comps[0] == "":
+        s = "/"
+    for c in comps:
+        if s and s[-1] != "/":
+            s += "/"
+        s += c
+        try:
+            os.mkdir(s)
+            ret = True
+        except OSError as e:
+            if e.args[0] != errno.EEXIST and e.args[0] != errno.EISDIR:
+                raise
+            ret = False
+    return ret
+
+
+def save_file(fname, subf):
+    global file_buf
+    with open(fname, "wb") as outf:
+        while True:
+            sz = subf.readinto(file_buf)
+            ##将数据从subf文件对象读取到file_buf变量中。readinto方法最多读取与缓冲区（file_buf）大小相等的数据，并返回读取的字节数。它将该值赋给变量sz。
+            if not sz:
+                break
+            outf.write(file_buf, sz)
+##解析tar文件中的文件和目录，并根据特定规则处理文件。它会根据文件名判断是否需要跳过文件或提取依赖项，并将文件保存到指定目录下。函数最后返回提取的元数据。
+def install_tar(f, prefix):##f（tar文件对象）和prefix（目录前缀）
+    meta = {}
+    for info in f:##遍历tar文件中的每个文件或目录。
+        #print(info)
+        fname = info.name
+        ##尝试从文件名中去除第一个斜杠之前的部分。如果找不到斜杠（ValueError异常），则将文件名置为空字符串
+        try:
+            fname = fname[fname.index("/") + 1:]
+        except ValueError:
+            fname = ""
+
+        save = True
+        for p in ("setup.", "PKG-INFO", "README"):
+                #print(fname, p)
+               ## 如果当前文件名以字符串p（for里面的三个）开头，或者".egg-info"在文件名中，进入条件判断。
+                if fname.startswith(p) or ".egg-info" in fname:
+                    ##果当前文件名以"/requires.txt"结尾，将该文件的内容作为依赖项存储到meta["deps"]中
+                    if fname.endswith("/requires.txt"):
+                        meta["deps"] = f.extractfile(info).read()
+                    save = False
+                    if debug:
+                        print("Skipping", fname)
+                    break
+
+        if save:
+            ##构建输出文件的路径，将prefix和当前文件名连接起来。
+            outfname = prefix + fname
+            ##如果当前文件的类型不是目录类型
+            if info.type != tarfile.DIRTYPE:
+                if debug:
+                    print("Extracting " + outfname)
+                ##调用_makedirs函数创建输出文件所在的目录。
+                _makedirs(outfname)
+                subf = f.extractfile(info)##获取当前文件的文件对象
+                save_file(outfname, subf)
+    return meta
+##将路径字符串中的"~/"扩展为当前用户的主目录路径
+def expandhome(s):
+    if "~/" in s:##检查字符串s中是否包含"~/"，即是否存在需要扩展的主目录路径。
+        h = os.getenv("HOME")##使用os.getenv()函数获取环境变量"HOME"的值，即当前用户的主目录路径，并将其赋值给变量h。
+        s = s.replace("~/", h + "/")##使用replace()方法将字符串s中的"~/"替换为主目录路径h + "/"，得到扩展后的路径
+    return s
+
+import ussl
+import usocket
+warn_ussl = True
+##打开给定的URL并返回一个网络套接字对象，以便进一步处理网络数据。
+def url_open(url):
+    global warn_ussl
+
+    if debug:
+        print(url)
+
+    ###将URL按照"/"分隔为4个部分，分别是协议（proto）、空白字符（忽略）、主机名（host）和URL路径（urlpath）。
+    proto, _, host, urlpath = url.split('/', 3)
+    try:
+        ai = usocket.getaddrinfo(host, 443, 0, usocket.SOCK_STREAM)
+    except OSError as e:##如果发生OSError异常，即无法解析主机名，将抛出一个致命错误，并打印无法解析主机名的消息。
+        fatal("Unable to resolve %s (no Internet?)" % host, e)
+    #print("Address infos:", ai)
+    ai = ai[0]
+
+    s = usocket.socket(ai[0], ai[1], ai[2])
+    try:
+        #print("Connect address:", addr)
+        s.connect(ai[-1])
+
+        if proto == "https:":
+            ##使用ussl.wrap_socket()函数对套接字进行SSL封装，建立安全连接。
+            s = ussl.wrap_socket(s, server_hostname=host)
+            if warn_ussl:
+                print("Warning: %s SSL certificate is not validated" % host)
+                warn_ussl = False
+
+        # MicroPython rawsocket module supports file interface directly
+        s.write("GET /%s HTTP/1.0\r\nHost: %s\r\n\r\n" % (urlpath, host))
+        l = s.readline()##从套接字中读取一行数据。
+        protover, status, msg = l.split(None, 2)##将读取的行数据按空格分割为协议版本（protover）、状态码（status）和消息（msg）。
+        if status != b"200":
+            if status == b"404" or status == b"301":
+                raise NotFoundError("Package not found")
+            raise ValueError(status)
+        while 1:
+            l = s.readline()
+            if not l:
+                raise ValueError("Unexpected EOF in HTTP headers")
+            if l == b'\r\n':##如果读取到空行，则表示HTTP响应头部读取完毕
+                break
+    except Exception as e:
+        s.close()
+        raise e
+
+    return s
+
+##从PyPI（Python包索引）获取指定包名的元数据。
+def get_pkg_metadata(name):
+    f = url_open("https://pypi.org/pypi/%s/json" % name)
+    try:
+        return json.load(f)##使用json.load()函数从连接对象f中加载元数据，将其转换为Python对象并返回。
+    finally:
+        f.close()
+
+##用于打印错误消息并以非零状态码退出程序
+##在程序遇到致命错误时，输出错误消息并终止程序的执行。
+def fatal(msg, exc=None):
+    print("Error:", msg)
+    if exc and debug:
+        raise exc
+    sys.exit(1)
+
+def install_pkg(pkg_spec, install_path):
+    ##获取指定包的元数据，并将结果赋值给变量data
+    data = get_pkg_metadata(pkg_spec)
+
+    latest_ver = data["info"]["version"]
+    packages = data["releases"][latest_ver]
+    del data
+    gc.collect()##手动触发垃圾回收，回收不再使用的内存空间。
+    assert len(packages) == 1##断言包列表的长度为1，即只有一个包可用。如果断言失败，将引发AssertionError异常。
+    package_url = packages[0]["url"]
+    print("Installing %s %s from %s" % (pkg_spec, latest_ver, package_url))
+    package_fname = op_basename(package_url)##使用op_basename函数提取包的文件名，并将其赋值给变量package_fname。
+    f1 = url_open(package_url)##打开包的下载URL，并将返回的连接对象赋值给变量f1。f1 = url_open(package_url)：调用url_open函数打开指定的package_url，返回一个文件对象，并将其赋值给变量f1。这个文件对象表示与URL对应的资源的内容。
+    try:
+        f2 = uzlib.DecompIO(f1, gzdict_sz)##使用uzlib.DecompIO将连接对象f1转换为解压缩的文件对象，并将其赋值给变量f2。
+        f3 = tarfile.TarFile(fileobj=f2)##使用tarfile.TarFile创建一个Tar文件对象，传入解压缩的文件对象f2。
+        meta = install_tar(f3, install_path)##调用install_tar函数安装解压缩的Tar文件到指定的安装路径，并将返回的元数据赋值给变量meta。
+    finally:
+        f1.close()
+    del f3
+    del f2
+    gc.collect()
+    return meta
+
+def install(to_install, install_path=None):
+    # Calculate gzip dictionary size to use
+    global gzdict_sz
+    ##计算当前可用内存的总大小，并将结果赋值给变量sz。
+    sz = gc.mem_free() + gc.mem_alloc()
+    if sz <= 65536:##如果可用内存总大小小于等于65536字节（64KB）。
+        gzdict_sz = 16 + 12##设置gzip字典的大小为16 + 12字节。
+
+    if install_path is None:
+        install_path = get_install_path()
+    if install_path[-1] != "/":
+        install_path += "/"
+    if not isinstance(to_install, list):
+        to_install = [to_install]
+    print("Installing to: " + install_path)
+    # sets would be perfect here, but don't depend on them
+    installed = []
+    try:
+        while to_install:
+            if debug:
+                print("Queue:", to_install)##打印当前待安装的包列表。
+            pkg_spec = to_install.pop(0)##从to_install列表中弹出第一个包，并将其赋值给pkg_spec变量。
+            if pkg_spec in installed:##如果pkg_spec已经在已安装的列表中
+                continue
+            meta = install_pkg(pkg_spec, install_path)##调用install_pkg函数安装指定的包，并将返回的元数据赋值给meta变量。
+            installed.append(pkg_spec)##将pkg_spec添加到已安装的列表中
+            if debug:
+                print(meta)
+            deps = meta.get("deps", "").rstrip()##从元数据中获取依赖项列表，并将其赋值给deps变量。如果没有依赖项，则默认为空字符串。
+            if deps:
+                deps = deps.decode("utf-8").split("\n")##将依赖项解码为UTF-8字符串，并将其拆分为列表。
+                to_install.extend(deps)##将依赖项列表deps中的元素逐个添加到to_install列表的末尾
+    except Exception as e:
+        ##当发生安装错误时，会将错误信息及相关变量打印到标准错误流，以提示用户出现了错误，并提醒可能会导致部分包被部分安装。
+        print("Error installing '{}': {!r}, packages may be partially installed".format(
+                pkg_spec, e),
+            file=sys.stderr)
+        raise e
+
+def get_install_path():
+    global install_path
+    if install_path is None:
+        # sys.path[0] is current module's path
+        install_path = sys.path[1]
+    install_path = expandhome(install_path)
+    return install_path
+##用于清理临时文件
+def cleanup():
+    for fname in cleanup_files:
+        try:
+            os.remove(fname)
+        except OSError:
+            print("Warning: Cannot delete " + fname)
+
+def help():
+    print("""\
+upip - Simple PyPI package manager for MicroPython
+Usage: micropython -m upip install [-p <path>] <package>... | -r <requirements.txt>
+import upip; upip.install(package_or_list, [<path>])
+
+If <path> is not given, packages will be installed into sys.path[1]
+(can be set from MICROPYPATH environment variable, if current system
+supports that).""")
+    print("Current value of sys.path[1]:", sys.path[1])
+    print("""\
+
+Note: only MicroPython packages (usually, named micropython-*) are supported
+for installation, upip does not support arbitrary code in setup.py.
+""")
+
+def main():
+    global debug
+    global install_path
+    install_path = None
+
+    if len(sys.argv) < 2 or sys.argv[1] == "-h" or sys.argv[1] == "--help":
+        help()
+        return
+
+    if sys.argv[1] != "install":
+        fatal("Only 'install' command supported")
+
+    to_install = []
+
+    i = 2
+    while i < len(sys.argv) and sys.argv[i][0] == "-":
+        opt = sys.argv[i]
+        i += 1
+        if opt == "-h" or opt == "--help":
+            help()
+            return
+        elif opt == "-p":
+            install_path = sys.argv[i]
+            i += 1
+        elif opt == "-r":
+            list_file = sys.argv[i]
+            i += 1
+            with open(list_file) as f:
+                while True:
+                    l = f.readline()
+                    if not l:
+                        break
+                    if l[0] == "#":
+                        continue
+                    to_install.append(l.rstrip())
+        elif opt == "--debug":
+            debug = True
+        else:
+            fatal("Unknown/unsupported option: " + opt)
+
+    to_install.extend(sys.argv[i:])
+    if not to_install:
+        help()
+        return
+
+    install(to_install)
+
+    if not debug:
+        cleanup()
+
+
+if __name__ == "__main__":
+    main()
