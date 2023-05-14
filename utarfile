@@ -1,0 +1,99 @@
+import uctypes
+
+# http://www.gnu.org/software/tar/manual/html_node/Standard.html
+##"name"字段，位于偏移0的位置，使用100字节表示。
+##"size"字段，位于偏移124的位置，使用11字节表示。
+TAR_HEADER = {
+    "name": (uctypes.ARRAY | 0, uctypes.UINT8 | 100),
+    "size": (uctypes.ARRAY | 124, uctypes.UINT8 | 11),
+}
+
+DIRTYPE = "dir"
+REGTYPE = "file"
+
+def roundup(val, align):
+    return (val + align - 1) & ~(align - 1)
+
+class FileSection:
+
+    def __init__(self, f, content_len, aligned_len):
+        self.f = f
+        self.content_len = content_len
+        self.align = aligned_len - content_len
+##从文件片段中读取指定大小的数据。如果内容长度为0，则返回空字节串。
+# 如果指定的大小超过内容长度，则只返回剩余的内容长度。读取后，更新内容长度。
+    def read(self, sz=65536):
+        if self.content_len == 0:
+            return b""
+        if sz > self.content_len:
+            sz = self.content_len
+        data = self.f.read(sz)
+        sz = len(data)
+        self.content_len -= sz
+        return data
+##将文件片段的数据读取到指定的缓冲区 buf 中。如果内容长度为0，则返回0表示没有数据读取。
+# 如果缓冲区大小超过内容长度，则只读取内容长度的数据到缓冲区。读取后，更新内容长度。
+    def readinto(self, buf):
+        if self.content_len == 0:
+            return 0
+        if len(buf) > self.content_len:
+            buf = memoryview(buf)[:self.content_len]
+        sz = self.f.readinto(buf)
+        self.content_len -= sz
+        return sz
+##跳过文件片段中的数据。计算要跳过的总字节数 sz，然后通过循环从文件中读取数据并跳过。这个方法通常用于忽略文件片段中的数据。
+    def skip(self):
+        sz = self.content_len + self.align
+        if sz:
+            buf = bytearray(16)
+            while sz:
+                s = min(sz, 16)
+                self.f.readinto(buf, s)
+                sz -= s
+
+class TarInfo:
+
+    def __str__(self):
+        return "TarInfo(%r, %s, %d)" % (self.name, self.type, self.size)
+
+class TarFile:
+
+    def __init__(self, name=None, fileobj=None):
+        if fileobj:
+            self.f = fileobj
+        else:
+            self.f = open(name, "rb")
+        self.subf = None
+##用于获取 tar 文件中的下一个条目。它读取 512 字节的数据块，并将其解析为 tar 条目的头部信息。如果读取的数据为空，则表示已到达 tar 文件的结尾，返回 None。
+##否则，根据头部信息创建 TarInfo 对象，并返回它。同时，为 TarInfo 对象的 subf 属性设置一个 FileSection 对象，用于表示文件内容的部分。
+    def next(self):
+            if self.subf:
+                self.subf.skip()
+            buf = self.f.read(512)
+            if not buf:
+                return None
+
+            h = uctypes.struct(uctypes.addressof(buf), TAR_HEADER, uctypes.LITTLE_ENDIAN)
+
+            # Empty block means end of archive
+            if h.name[0] == 0:
+                return None
+
+            d = TarInfo()
+            d.name = str(h.name, "utf-8").rstrip("\0")
+            d.size = int(bytes(h.size), 8)
+            d.type = [REGTYPE, DIRTYPE][d.name[-1] == "/"]
+            self.subf = d.subf = FileSection(self.f, d.size, roundup(d.size, 512))
+            return d
+##返回一个迭代器对象，该迭代器对象本身即为 TarFile 类的实例，因此可以直接用于迭代。
+    def __iter__(self):
+        return self
+##用于获取迭代器的下一个值。它内部调用了 next() 方法来获取下一个 TarInfo 对象，
+    def __next__(self):
+        v = self.next()
+        if v is None:
+            raise StopIteration
+        return v
+##接受一个 tarinfo 参数，该参数是一个 TarInfo 对象，用于提取该条目对应的文件内容。它返回 tarinfo 对象的 subf 属性，即一个 FileSection 对象。
+    def extractfile(self, tarinfo):
+        return tarinfo.subf
