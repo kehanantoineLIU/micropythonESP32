@@ -1,0 +1,56 @@
+<div id="title-icon"></div>
+#title-icon {
+  width: 24px;
+  height: 24px;
+  background-image: url("icon.svg");
+  background-repeat: no-repeat;
+  /* 可以根据需要添加其他样式 */
+}
+如果 SVG 图像的尺寸与您所需的大小不匹配，您可能需要使用 CSS 来调整容器元素的尺寸或者在 SVG 图像中进行修改。
+另外，确保 SVG 图像的路径（url("icon.svg")）与实际保存的文件路径相匹配。
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>
+    <img src="logo.png" alt="网站标志">
+    您的网站标题
+  </title>
+</head>
+<body>
+  <!-- 网站内容 -->
+</body>
+</html>
+
+
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+
+
+<link rel="icon" type="image/svg+xml" href="#">
+<style>
+  /* 在这里嵌入您的 SVG 图标代码 */
+  #title-icon {
+    /* SVG 样式 */
+  }
+</style>
+
+
+文件格式：确保 SVG 文件的格式正确。SVG 文件应该是有效的 XML 文档，并且使用正确的 SVG 命名空间和标签。
+
+尺寸：标签页小图标通常要求尺寸为 16x16 像素或 32x32 像素。确保您的 SVG 文件尺寸适合显示为小图标，可以根据需要调整 SVG 文件的视图框（viewbox）和尺寸。
+
+SVG 代码：SVG 文件内部的代码应该是有效的 SVG 格式。确保 SVG 代码没有语法错误、嵌套错误或无效的标签。
+
+内容支持：某些浏览器可能对 SVG 文件的某些功能或元素支持有限。确保您的 SVG 文件不包含不受支持的元素、属性或特性。
+
+兼容性：不同浏览器对 SVG 文件的支持程度可能会有所不同。一些旧版浏览器可能不支持直接使用 SVG 作为标签页小图标。因此，最好在不同浏览器中进行测试，以确保 SVG 图标能够正常显示。
+
+svg {
+  width: 16px; /* 根据需要设置图标的宽度 */
+  height: 16px; /* 根据需要设置图标的高度 */
+}
+svg {
+  width: 16px; /* 根据需要设置缩放后的图标宽度 */
+  height: 16px; /* 根据需要设置缩放后的图标高度 */
+  transform: scale(0.5); /* 根据需要设置缩放比例 */
+}
