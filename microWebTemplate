@@ -1,0 +1,276 @@
+	def _processInstructionINCLUDE(self, instructionBody, execute) :
+		if not instructionBody :
+			raise Exception( '"%s" alone is an incomplete syntax (line %s)' % (MicroWebTemplate.INSTRUCTION_INCLUDE, self._line) )
+		filename = instructionBody.replace('"','').replace("'",'').strip()去除指令主体部分中的双引号和单引号，并去除首尾的空白字符，得到一个文件名。
+		idx = self._filepath.rindex('/')
+		if idx >= 0 :
+			filename = self._filepath[:idx+1] + filename
+      找到self._filepath中最后一个斜杠（/）的索引位置，并检查是否大于等于0。如果存在斜杠，则将斜杠之前的部分与文件名拼接，得到包含路径的文件名。
+		with open(filename, 'r') as file :
+			includeCode = file.read()
+    使用只读模式打开文件，并读取文件内容到变量includeCode中。
+			self._code = self._code[:self._pos] + includeCode + self._code[self._pos:]
+			self._endPos += len(includeCode)
+     将includeCode插入到self._code的指定位置，并更新self._endPos的值，增加includeCode的长度。这样，被包含的代码就被插入到了当前代码中。
+     
+     
+     
+     def _parseCode(self, pyGlobalVars, pyLocalVars, execute) :
+		if pyGlobalVars:
+			self._pyGlobalVars.update(pyGlobalVars) 
+		if pyLocalVars:
+			self._pyLocalVars.update(pyLocalVars)
+		self._pyLocalVars['MESSAGE_TEXT'] = MicroWebTemplate.MESSAGE_TEXT
+		self._pyLocalVars['MESSAGE_STYLE'] = MicroWebTemplate.MESSAGE_STYLE
+		self._rendered	   = ''
+		newTokenToProcess  = self._parseBloc(execute)
+		if newTokenToProcess is not None :
+			raise Exception( '"%s" instruction is not valid here (line %s)'
+							 % (newTokenToProcess, self._line) )
+		MicroWebTemplate.MESSAGE_TEXT  = ''
+		MicroWebTemplate.MESSAGE_STYLE = ''
+    如果pyGlobalVars不为空，将其内容更新到self._pyGlobalVars字典中。
+如果pyLocalVars不为空，将其内容更新到self._pyLocalVars字典中。
+将MicroWebTemplate.MESSAGE_TEXT赋值给self._pyLocalVars['MESSAGE_TEXT']。
+将MicroWebTemplate.MESSAGE_STYLE赋值给self._pyLocalVars['MESSAGE_STYLE']。
+将self._rendered置为空字符串。
+调用self._parseBloc(execute)方法解析代码块，并返回一个新的需要处理的令牌（token）。
+如果newTokenToProcess不为空，即有无效的指令出现在这里，抛出异常，提示"%s" instruction is not valid here (line %s)，其中%s部分将会被替换为newTokenToProcess和self._line的值。
+将MicroWebTemplate.MESSAGE_TEXT和MicroWebTemplate.MESSAGE_STYLE置为空字符串。
+该方法的作用是解析代码块并执行相关操作，包括更新变量、处理指令和清空消息文本和样式。
+
+def _parseBloc(self, execute) :
+		while self._pos <= self._endPos :
+			c = self._code[self._pos]
+			if c == MicroWebTemplate.TOKEN_OPEN[0] and \
+			    self._code[ self._pos : self._pos + MicroWebTemplate.TOKEN_OPEN_LEN ] == MicroWebTemplate.TOKEN_OPEN :
+				self._pos    += MicroWebTemplate.TOKEN_OPEN_LEN
+				tokenContent  = ''
+				x 			  = self._pos
+				while True :
+					if x > self._endPos :
+						raise Exception("%s is missing (line %s)" % (MicroWebTemplate.TOKEN_CLOSE, self._line))
+					c = self._code[x]
+					if c == MicroWebTemplate.TOKEN_CLOSE[0] and \
+					   self._code[ x : x + MicroWebTemplate.TOKEN_CLOSE_LEN ] == MicroWebTemplate.TOKEN_CLOSE :
+					   self._pos = x + MicroWebTemplate.TOKEN_CLOSE_LEN
+					   break
+					elif c == '\n' :
+					 	self._line += 1
+					tokenContent += c
+					x 			 += 1
+				newTokenToProcess = self._processToken(tokenContent, execute)
+				if newTokenToProcess is not None :
+					return newTokenToProcess
+				continue
+			elif c == '\n' :
+				self._line += 1
+			if execute :
+				self._rendered += c
+			self._pos += 1
+		return None
+
+在代码块中，从当前位置self._pos开始，逐个字符检查。
+如果字符c是MicroWebTemplate.TOKEN_OPEN的起始字符，并且从self._pos开始的一段子字符串与MicroWebTemplate.TOKEN_OPEN完全匹配，那么进入处理令牌的逻辑。
+增加self._pos的值，以跳过MicroWebTemplate.TOKEN_OPEN。
+创建一个空字符串tokenContent，用于存储令牌的内容。
+使用变量x初始化为self._pos，表示当前位置。
+在循环中，逐个字符检查，直到找到与MicroWebTemplate.TOKEN_CLOSE匹配的子字符串为止。
+如果x超过了self._endPos，表示代码中缺少MicroWebTemplate.TOKEN_CLOSE，抛出异常，提示"%s is missing (line %s)"，其中%s部分将会被替换为MicroWebTemplate.TOKEN_CLOSE和self._line的值。
+检查字符c是否为换行符\n，如果是，则将行数self._line增加1。
+将字符c添加到tokenContent中。
+增加x的值，以继续检查下一个字符。
+调用self._processToken(tokenContent, execute)方法处理令牌，并返回一个新的需要处理的令牌。
+如果 _processToken 方法返回一个新的要处理的指令标记，即 newTokenToProcess 不为 None，则立即返回该指令标记，结束方法的执行。
+
+如果当前字符 c 是换行符 \n，则增加行号 _line。
+
+最后，如果 execute 为真，则将当前字符 c 添加到 _rendered 变量中。
+
+将当前位置 _pos 增加 1，继续下一个字符的处理。
+
+循环结束后，返回 None，表示没有新的要处理的指令标记。
+
+该方法的作用是解析模板中的指令，并根据指令的类型和内容执行相应的操作，同时将模板代码渲染到 _rendered 变量中。
+
+
+
+def _processInstructionPYTHON(self, instructionBody, execute) :
+		if instructionBody is not None :
+			raise Exception( 'Instruction "%s" is invalid (line %s)'
+							 % (MicroWebTemplate.INSTRUCTION_PYTHON, self._line) )
+		pyCode = ''
+		while True :
+			if self._pos > self._endPos :
+				raise Exception( '"%s" instruction is missing (line %s)'
+								 % (MicroWebTemplate.INSTRUCTION_END, self._line) )
+			c = self._code[self._pos]
+			if c == MicroWebTemplate.TOKEN_OPEN[0] and \
+			   self._code[ self._pos : self._pos + MicroWebTemplate.TOKEN_OPEN_LEN ] == MicroWebTemplate.TOKEN_OPEN :
+				self._pos    += MicroWebTemplate.TOKEN_OPEN_LEN
+				tokenContent  = ''
+				x 			  = self._pos
+				while True :
+					if x > self._endPos :
+						raise Exception("%s is missing (line %s)" % (MicroWebTemplate.TOKEN_CLOSE, self._line))
+					c = self._code[x]
+					if c == MicroWebTemplate.TOKEN_CLOSE[0] and \
+					   self._code[ x : x + MicroWebTemplate.TOKEN_CLOSE_LEN ] == MicroWebTemplate.TOKEN_CLOSE :
+					   self._pos = x + MicroWebTemplate.TOKEN_CLOSE_LEN
+					   break
+					elif c == '\n' :
+					 	self._line += 1
+					tokenContent += c
+					x 			 += 1
+				tokenContent = tokenContent.strip()
+				if tokenContent == MicroWebTemplate.INSTRUCTION_END :
+					break
+				raise Exception( '"%s" is a bad instruction in a python bloc (line %s)'
+								 % (tokenContent, self._line) )				
+        首先，去除tokenContent两端的空白字符。
+然后，检查tokenContent是否等于MicroWebTemplate.INSTRUCTION_END，如果相等，说明遇到了指令的结束标记，跳出循环。
+如果不相等，则抛出一个异常，指示在Python块中出现了无效的指令（无效指令的内容为tokenContent，行号为self._line）。
+			elif c == '\n' :
+				self._line += 1
+      如果当前字符c是换行符\n，则增加self._line的值，表示进入下一行。
+			if execute :
+				pyCode += c
+			self._pos += 1
+       如果execute为True（表示需要执行指令），则将当前字符c添加到pyCode中。
+将self._pos的值增加1，指向下一个字符。
+		if execute :
+			lines  = pyCode.split('\n')
+			indent = '' 
+     
+			for line in lines :
+				if len(line.strip()) > 0 :
+					for c in line :
+						if c == ' ' or c == '\t' :
+							indent += c
+						else :
+							break
+					break
+			pyCode = ''
+			for line in lines :
+				if line.find(indent) == 0 :
+					line = line[len(indent):]
+				pyCode += line + '\n'
+			try :
+				exec(pyCode, self._pyGlobalVars, self._pyLocalVars)
+			except Exception as ex :
+				raise Exception('%s (line %s)' % (str(ex), self._line))
+		return None
+  如果execute为True，即需要执行指令，则进行以下操作：
+将pyCode按换行符\n分割成多行，并存储在列表lines中。
+初始化一个空字符串indent，用于存储缩进字符串。
+遍历lines列表，找到第一行非空行，并确定缩进字符串indent。
+重新构建pyCode，去除每行开头与缩进字符串相同的部分，并添加换行符。
+使用exec函数执行重构后的pyCode，并传递全局变量self._pyGlobalVars和局部变量self._pyLocalVars。
+如果执行过程中抛出异常，则捕获该异常，并重新抛出带有错误信息和行号的新异常。
+
+
+检查当前位置self._pos是否超出了代码的结束位置self._endPos，如果超出，则抛出一个异常，指示缺少结束指令（缺少指令的行号为self._line）。
+
+获取当前位置的字符c。
+
+判断字符c是否等于MicroWebTemplate.TOKEN_OPEN的第一个字符，并且从当前位置开始的长度为MicroWebTemplate.TOKEN_OPEN_LEN的子串与MicroWebTemplate.TOKEN_OPEN相等。如果满足条件，说明找到了一个指令的开始标记。
+
+将当前位置向后移动MicroWebTemplate.TOKEN_OPEN_LEN个字符。
+
+初始化一个空字符串tokenContent，用于存储指令的内容。
+
+初始化一个变量x，并将其赋值为当前位置self._pos。
+
+进入一个内部循环，直到遇到结束标记为止。循环内部进行如下操作：
+
+检查当前位置x是否超出了代码的结束位置self._endPos，如果超出，则抛出一个异常，指示缺少结束标记（缺少标记的行号为self._line）。
+
+获取当前位置的字符c。
+
+判断字符c是否等于MicroWebTemplate.TOKEN_CLOSE的第一个字符，并且从当前位置开始的长度为MicroWebTemplate.TOKEN_CLOSE_LEN的子串与MicroWebTemplate.TOKEN_CLOSE相等。如果满足条件，说明找到了指令的结束标记。
+
+将当前位置向后移动MicroWebTemplate.TOKEN_CLOSE_LEN个字符。
+
+跳出内部循环。
+
+将字符c添加到tokenContent中。
+
+将变量x增加1。
+
+去除tokenContent两端的空白字符。
+
+如果tokenContent等于MicroWebTemplate.TOKEN_CLOSE，说明指令内容为空，跳过后续操作。
+
+否则，将tokenContent作为Python代码的一部分，添加到pyCode中。
+
+最后，返回pyCode。
+
+
+
+
+首先，{{ include myTemplate.pyhtml }} 是一个模板中的指令，用于包含名为 myTemplate.pyhtml 的模板文件的内容。
+
+在模板解析过程中，当解析到 {{ include myTemplate.pyhtml }} 这一指令时，会触发 _processToken 方法进行处理。
+
+_processToken 方法会将指令内容进行分割，提取出指令名称和指令体。在这里，指令名称是 include，指令体是 myTemplate.pyhtml。
+
+根据指令名称，调用 _processInstructionINCLUDE 方法进行处理。
+
+_processInstructionINCLUDE 方法首先检查指令体是否为空，如果为空，则抛出异常表示语法不完整。
+
+接下来，根据指令体中的文件名构建完整的文件路径。
+
+打开指定的文件，将文件内容读取到 includeCode 变量中。
+
+将读取到的文件内容插入到当前模板代码中，通过对 _code 字符串进行切片操作，将 includeCode 插入到适当的位置。同时更新 _endPos 变量以反映插入的内容。
+
+因此，{{ include myTemplate.pyhtml }} 指令调用了以下函数：
+
+_processToken
+_processInstructionINCLUDE
+在解析和渲染模板的过程中，还会涉及到其他函数的调用，但这些函数与 {{ include myTemplate.pyhtml }} 指令的解析和执行无直接关联。
+
+def _processToken(self, tokenContent, execute) :
+		tokenContent = tokenContent.strip()
+		parts 		 = tokenContent.split(' ', 1)
+		instructName = parts[0].strip()
+		instructBody = parts[1].strip() if len(parts) > 1 else None
+		if len(instructName) == 0 :
+			raise Exception( '"%s %s" : instruction is missing (line %s)'
+							 % (MicroWebTemplate.TOKEN_OPEN, MicroWebTemplate.TOKEN_CLOSE, self._line) )
+		newTokenToProcess = None
+		if instructName in self._instructions :
+			newTokenToProcess = self._instructions[instructName](instructBody, execute)
+		elif execute :
+			try :
+				s = str( eval( tokenContent,
+							   self._pyGlobalVars,
+							   self._pyLocalVars ) )
+				if (self._escapeStrFunc is not None) :
+					self._rendered += self._escapeStrFunc(s)
+				else :
+					self._rendered += s
+			except Exception as ex :
+				raise Exception('%s (line %s)' % (str(ex), self._line))
+		return newTokenToProcess
+_processToken 方法接收两个参数，tokenContent 表示指令内容，execute 表示是否执行指令。
+
+首先，对指令内容进行去除首尾空格的处理，将结果赋值给 tokenContent 变量。
+
+然后，通过空格分割指令内容，将结果存储在 parts 列表中。parts 的第一个元素是指令名称，通过 strip() 方法去除首尾空格，赋值给 instructName 变量。parts 的第二个元素是指令体，通过 strip() 方法去除首尾空格，赋值给 instructBody 变量。如果 parts 的长度大于1，则表示指令体存在；否则，指令体为 None。
+
+如果指令名称的长度为0，即指令名称为空，则抛出异常，表示指令缺失。
+
+创建一个新的变量 newTokenToProcess，用于存储后续需要处理的指令。
+
+如果指令名称存在于 _instructions 字典中，说明是一个已定义的指令，则调用对应的处理函数，并将指令体和 execute 参数作为参数传递给处理函数。将处理函数的返回值赋给 newTokenToProcess 变量。
+
+如果指令名称不存在于 _instructions 字典中，并且 execute 为真，则表示指令为表达式。在这种情况下，将指令内容作为表达式进行求值，并将结果转换为字符串。如果指定了 _escapeStrFunc 函数，则对结果进行处理，然后将结果添加到 _rendered 字符串中。
+
+如果指令执行过程中发生异常，则抛出异常，表示指令执行出错。
+
+返回 newTokenToProcess 变量，用于进一步处理可能存在的下一个指令。
+
+因此，_processToken 方法可能调用以下函数：
+
+_instructions[instructName]，根据指令名称调用相应的处理函数。
